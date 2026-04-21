@@ -1,0 +1,57 @@
+import streamlit as st
+import cv2
+import yt_dlp
+import os
+import numpy as np
+
+st.set_page_config(page_title="RE2 Speedrun Analyzer", page_icon="⏱️")
+
+st.title("⏱️ RE2 Remake Speedrun Splitter")
+st.write("Pega el link de YouTube y el sistema medirá los tiempos basándose en tus fotos.")
+
+# 1. Configuración de la URL
+url_yt = st.text_input("URL de YouTube:", "https://www.youtube.com/watch?v=...")
+
+def obtener_video(url):
+    ydl_opts = {'format': 'best', 'quiet': True}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        return info['url']
+
+if st.button("Empezar Análisis"):
+    if url_yt:
+        # Cargar imágenes de la carpeta assets
+        folder = "assets"
+        lista_splits = sorted([f for f in os.listdir(folder) if f.endswith(('.png', '.jpg'))])
+        
+        video_url = obtener_video(url_yt)
+        cap = cv2.VideoCapture(video_url)
+        
+        progreso = st.progress(0)
+        status_text = st.empty()
+        
+        indice = 0
+        tiempos = []
+        
+        while cap.isOpened() and indice < len(lista_splits):
+            ret, frame = cap.read()
+            if not ret: break
+            
+            # Procesar split actual
+            nombre_foto = lista_splits[indice]
+            template = cv2.imread(os.path.join(folder, nombre_foto), 0)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            
+            res = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(res)
+            
+            if max_val > 0.8:
+                t_seg = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000
+                tiempos.append((nombre_foto, t_seg))
+                indice += 1
+                progreso.progress(indice / len(lista_splits))
+                st.success(f"Split detectado: {nombre_foto} a los {t_seg:.2f}s")
+
+        st.write("### Resultados Finales")
+        st.table(tiempos)
+        cap.release()
